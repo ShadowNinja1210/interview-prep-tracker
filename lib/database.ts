@@ -28,26 +28,38 @@ const sql: ReturnType<typeof neon> | null = isServer
 
 export class Database {
   // Pointers
-  static async getPointers(): Promise<Pointer[]> {
+  static async getPointers(userId?: string): Promise<Pointer[]> {
     if (!sql) {
       // Browser fallback – return an empty array / noop so the preview doesn't crash
       return [];
     }
-    const result = await sql`
-      SELECT * FROM pointers 
-      ORDER BY created_at DESC
-    `;
-    return result as Pointer[];
+
+    if (userId) {
+      const result = await sql`
+        SELECT * FROM pointers 
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+      `;
+      return result as Pointer[];
+    } else {
+      const result = await sql`
+        SELECT * FROM pointers 
+        ORDER BY created_at DESC
+      `;
+      return result as Pointer[];
+    }
   }
 
-  static async createPointer(pointer: Omit<Pointer, "id" | "created_at" | "completed_at">): Promise<Pointer> {
+  static async createPointer(
+    pointer: Omit<Pointer, "id" | "created_at" | "completed_at"> & { user_id?: string }
+  ): Promise<Pointer> {
     if (!sql) {
       console.warn("DB write attempted in the browser preview – ignored.");
       return { ...pointer, id: crypto.randomUUID(), created_at: new Date().toISOString(), completed_at: null };
     }
     const result = await sql`
-      INSERT INTO pointers (title, topic, status, weightage, feedback_summary, action_steps)
-      VALUES (${pointer.title}, ${pointer.topic}, ${pointer.status}, ${pointer.weightage}, ${pointer.feedback_summary}, ${pointer.action_steps})
+      INSERT INTO pointers (title, topic, status, weightage, feedback_summary, action_steps, user_id)
+      VALUES (${pointer.title}, ${pointer.topic}, ${pointer.status}, ${pointer.weightage}, ${pointer.feedback_summary}, ${pointer.action_steps}, ${pointer.user_id})
       RETURNING *
     `;
     // Fix: result may be an array of objects or a nested array, depending on the driver.
@@ -118,14 +130,16 @@ export class Database {
   }
 
   // Pointer History
-  static async addPointerHistory(history: Omit<PointerHistory, "id" | "updated_at">): Promise<PointerHistory> {
+  static async addPointerHistory(
+    history: Omit<PointerHistory, "id" | "updated_at"> & { user_id?: string }
+  ): Promise<PointerHistory> {
     if (!sql) {
       console.warn("DB write attempted in the browser preview – ignored.");
       return { ...history, id: crypto.randomUUID(), updated_at: new Date().toISOString() } as PointerHistory;
     }
     const result = await sql`
-      INSERT INTO pointer_history (pointer_id, change_type, ai_reasoning, similarity_score, remarks, previous_status, new_status)
-      VALUES (${history.pointer_id}, ${history.change_type}, ${history.ai_reasoning}, ${history.similarity_score}, ${history.remarks}, ${history.previous_status}, ${history.new_status})
+      INSERT INTO pointer_history (pointer_id, change_type, ai_reasoning, similarity_score, remarks, previous_status, new_status, user_id)
+      VALUES (${history.pointer_id}, ${history.change_type}, ${history.ai_reasoning}, ${history.similarity_score}, ${history.remarks}, ${history.previous_status}, ${history.new_status}, ${history.user_id})
       RETURNING *
     `;
     // Fix: result may be an array of objects or a nested array, depending on the driver.
@@ -192,14 +206,25 @@ export class Database {
     } as FeedbackSession;
   }
 
-  static async getFeedbackSessions(): Promise<FeedbackSession[]> {
+  static async getFeedbackSessions(userId?: string): Promise<FeedbackSession[]> {
     if (!sql) {
       return [];
     }
-    const result = await sql`
-      SELECT * FROM feedback_sessions 
-      ORDER BY submitted_at DESC
-    `;
+
+    let result;
+    if (userId) {
+      result = await sql`
+        SELECT * FROM feedback_sessions 
+        WHERE user_id = ${userId}
+        ORDER BY submitted_at DESC
+      `;
+    } else {
+      result = await sql`
+        SELECT * FROM feedback_sessions 
+        ORDER BY submitted_at DESC
+      `;
+    }
+
     // Ensure result is an array of records, not a special query result object
     const rows = Array.isArray(result) ? result : [];
     return rows.map((session: any) => ({
@@ -211,7 +236,7 @@ export class Database {
   }
 
   // Analytics
-  static async getProgressMetrics() {
+  static async getProgressMetrics(userId?: string) {
     if (!sql) {
       return {
         total_pointers: 0,
@@ -223,7 +248,7 @@ export class Database {
         plateau_warnings: [],
       };
     }
-    const pointers = await this.getPointers();
+    const pointers = await this.getPointers(userId);
     const totalPointers = pointers.length;
     const completedPointers = pointers.filter((p) => p.status === "completed").length;
 
@@ -298,5 +323,62 @@ export class Database {
     return (rows as Array<Pointer & { similarity: number }>).filter(
       (r) => typeof r.similarity === "number" && r.similarity > 0
     );
+  }
+
+  // Create sample data for new users
+  static async createSampleDataForUser(userId: string): Promise<void> {
+    if (!sql) {
+      return;
+    }
+
+    const samplePointers = [
+      {
+        title: "Binary Search Implementation",
+        topic: "DSA" as Topic,
+        status: "in_progress" as const,
+        weightage: 8,
+        feedback_summary: "Need to practice edge cases",
+        action_steps: "Practice with different array sizes",
+      },
+      {
+        title: "System Design: URL Shortener",
+        topic: "System Design" as Topic,
+        status: "not_started" as const,
+        weightage: 9,
+        feedback_summary: "High priority for interviews",
+        action_steps: "Study scalability patterns",
+      },
+      {
+        title: "Behavioral: Leadership Stories",
+        topic: "Behavioral" as Topic,
+        status: "completed" as const,
+        weightage: 7,
+        feedback_summary: "Good examples prepared",
+        action_steps: "Practice STAR format",
+      },
+      {
+        title: "LLD: Parking Lot System",
+        topic: "LLD" as Topic,
+        status: "not_started" as const,
+        weightage: 6,
+        feedback_summary: "Common interview question",
+        action_steps: "Design classes and relationships",
+      },
+      {
+        title: "Coding: Dynamic Programming",
+        topic: "Coding" as Topic,
+        status: "in_progress" as const,
+        weightage: 8,
+        feedback_summary: "Need more practice",
+        action_steps: "Solve 5 problems daily",
+      },
+    ];
+
+    for (const pointer of samplePointers) {
+      await sql`
+        INSERT INTO pointers (title, topic, status, weightage, feedback_summary, action_steps, user_id)
+        VALUES (${pointer.title}, ${pointer.topic}, ${pointer.status}, ${pointer.weightage}, ${pointer.feedback_summary}, ${pointer.action_steps}, ${userId})
+      `;
+    }
   }
 }

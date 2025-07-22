@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Database } from "@/lib/database";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { pointer, history } = await request.json();
 
     console.log("API: Creating pointer:", pointer.title);
@@ -15,6 +21,7 @@ export async function POST(request: NextRequest) {
       weightage: 5, // Default weightage
       feedback_summary: "Created from feedback analysis",
       action_steps: pointer.action_steps,
+      user_id: user.id,
     });
 
     console.log("API: Created pointer:", newPointer.id);
@@ -29,11 +36,12 @@ export async function POST(request: NextRequest) {
         remarks: "AI-suggested pointer approved by user",
         previous_status: null,
         new_status: "not_started",
+        user_id: user.id,
       });
     }
 
     // Get updated pointers list
-    const updatedPointers = await Database.getPointers();
+    const updatedPointers = await Database.getPointers(user.id);
 
     return NextResponse.json({
       success: true,
@@ -55,7 +63,12 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const pointers = await Database.getPointers();
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const pointers = await Database.getPointers(user.id);
     return NextResponse.json({
       success: true,
       pointers,

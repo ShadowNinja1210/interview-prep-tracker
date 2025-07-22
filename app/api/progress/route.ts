@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { Database } from "@/lib/database";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET() {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     console.log("API: Getting progress metrics...");
 
-    const metrics = await Database.getProgressMetrics();
+    const metrics = await Database.getProgressMetrics(user.id);
 
     console.log("API: Progress metrics:", {
       total_pointers: metrics.total_pointers,
