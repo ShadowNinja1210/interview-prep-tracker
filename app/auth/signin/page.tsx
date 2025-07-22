@@ -96,10 +96,6 @@ export default function SignIn() {
           </form>
 
           <div className="mt-4 text-center text-sm text-muted-foreground">
-            <p>Demo credentials:</p>
-            <p>Email: john@example.com | Password: password123</p>
-            <p>Email: jane@example.com | Password: password123</p>
-            <p>Email: bob@example.com | Password: password123</p>
             <div className="mt-4 pt-4 border-t">
               <p>
                 Don't have an account?{" "}
