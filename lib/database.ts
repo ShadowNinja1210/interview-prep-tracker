@@ -81,24 +81,25 @@ export class Database {
       console.warn("DB write attempted in the browser preview – ignored.");
       return { id, ...updates, created_at: new Date().toISOString(), completed_at: null } as Pointer;
     }
-    const setClause = Object.entries(updates)
-      .filter(([_, value]) => value !== undefined)
-      .map(([key, _]) => `${key} = $${key}`)
-      .join(", ");
 
+    // Use the exact same pattern as markPointerComplete
     const result = await sql`
       UPDATE pointers 
-      SET ${sql.unsafe(setClause)}
+      SET title = ${updates.title || ""}, 
+          topic = ${updates.topic || ""}, 
+          status = ${updates.status || "not_started"}, 
+          weightage = ${updates.weightage || 5}, 
+          feedback_summary = ${updates.feedback_summary || ""}, 
+          action_steps = ${updates.action_steps || ""}
       WHERE id = ${id}
       RETURNING *
     `;
-    // Fix: result may be an array of objects or a nested array, depending on the driver.
+
+    // Handle result format
     if (Array.isArray(result)) {
       if (result.length > 0 && typeof result[0] === "object" && result[0] !== null && !Array.isArray(result[0])) {
-        // result is an array of objects
         return result[0] as Pointer;
       } else if (result.length > 0 && Array.isArray(result[0]) && result[0].length > 0) {
-        // result is a nested array (e.g., [[row]])
         return result[0][0] as Pointer;
       }
     }
@@ -280,6 +281,32 @@ export class Database {
       recent_activity: 0, // TODO: Calculate based on recent updates
       plateau_warnings: [], // TODO: Identify stale pointers
     };
+  }
+
+  static async getPointerById(id: string, userId: string): Promise<Pointer | null> {
+    if (!sql) {
+      return null;
+    }
+    const result = await sql`
+      SELECT * FROM pointers 
+      WHERE id = ${id} AND user_id = ${userId}
+    `;
+
+    // Handle different result formats
+    if (Array.isArray(result) && result.length > 0) {
+      return result[0] as Pointer;
+    }
+    return null;
+  }
+
+  static async deletePointer(id: string, userId: string): Promise<void> {
+    if (!sql) {
+      return;
+    }
+    await sql`
+      DELETE FROM pointers 
+      WHERE id = ${id} AND user_id = ${userId}
+    `;
   }
 
   static async findSimilarPointers(

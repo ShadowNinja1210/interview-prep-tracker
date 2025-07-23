@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Database } from "@/lib/database";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const pointerId = params.id;
+    const { id: pointerId } = await params;
     console.log("API: Getting pointer history:", pointerId);
 
     const history = await Database.getPointerHistory(pointerId);

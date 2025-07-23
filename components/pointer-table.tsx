@@ -9,9 +9,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, Calendar, Target, TrendingUp } from "lucide-react";
+import { Eye, Calendar, Target, TrendingUp, Edit, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import type { Pointer, Topic, Status } from "@/lib/types";
+import { EditPointerDialog } from "@/components/edit-pointer-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const TOPICS: Topic[] = ["DSA", "LLD", "System Design", "Behavioral", "Coding", "Architecture"];
 const STATUSES: Status[] = ["not_started", "in_progress", "completed"];
@@ -29,6 +41,8 @@ export function PointerTable() {
   } = useAppStore();
 
   const [loading, setLoading] = useState(true);
+  const [editingPointer, setEditingPointer] = useState<Pointer | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     loadPointers();
@@ -96,6 +110,33 @@ export function PointerTable() {
     }
   };
 
+  const handleEditPointer = (pointer: Pointer) => {
+    setEditingPointer(pointer);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDeletePointer = async (pointer: Pointer) => {
+    try {
+      const response = await fetch(`/api/pointers/${pointer.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      // Refresh pointers from API
+      await loadPointers();
+    } catch (error) {
+      console.error("Failed to delete pointer:", error);
+    }
+  };
+
+  const handlePointerUpdated = () => {
+    loadPointers();
+  };
+
   const filteredPointers = pointers.filter((pointer) => {
     const topicMatch = topicFilter === "all" || pointer.topic === topicFilter;
     const statusMatch = statusFilter === "all" || pointer.status === statusFilter;
@@ -138,124 +179,157 @@ export function PointerTable() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Preparation Pointers ({filteredPointers.length})
-          </CardTitle>
-          <div className="flex gap-2">
-            <Select value={topicFilter} onValueChange={setTopicFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by topic" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Topics</SelectItem>
-                {TOPICS.map((topic) => (
-                  <SelectItem key={topic} value={topic}>
-                    {topic}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status.replace("_", " ").toUpperCase()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Preparation Pointers ({filteredPointers.length})
+            </CardTitle>
+            <div className="flex gap-2">
+              <Select value={topicFilter} onValueChange={setTopicFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Topics</SelectItem>
+                  {TOPICS.map((topic) => (
+                    <SelectItem key={topic} value={topic}>
+                      {topic}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace("_", " ").toUpperCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">✓</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Topic</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Weight</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Completed</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredPointers.map((pointer) => (
-              <TableRow key={pointer.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={pointer.status === "completed"}
-                    onCheckedChange={() => {
-                      if (pointer.status !== "completed") {
-                        handleMarkComplete(pointer);
-                      }
-                    }}
-                    disabled={pointer.status === "completed"}
-                  />
-                </TableCell>
-                <TableCell className="font-medium max-w-xs">
-                  <div className="truncate" title={pointer.title}>
-                    {pointer.title}
-                  </div>
-                  {pointer.feedback_summary && (
-                    <div className="text-sm text-muted-foreground truncate mt-1">{pointer.feedback_summary}</div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge className={getTopicColor(pointer.topic)}>{pointer.topic}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge className={getStatusColor(pointer.status)}>
-                    {pointer.status.replace("_", " ").toUpperCase()}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    {pointer.weightage}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    {format(new Date(pointer.created_at), "MMM dd")}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {pointer.completed_at ? (
-                    <div className="flex items-center gap-1 text-sm text-green-600">
-                      <Calendar className="h-4 w-4" />
-                      {format(new Date(pointer.completed_at), "MMM dd")}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">-</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedPointer(pointer)}>
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                </TableCell>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">✓</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Topic</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Weight</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Completed</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {filteredPointers.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            No pointers found. Submit feedback to get started!
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            </TableHeader>
+            <TableBody>
+              {filteredPointers.map((pointer) => (
+                <TableRow key={pointer.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={pointer.status === "completed"}
+                      onCheckedChange={() => {
+                        if (pointer.status !== "completed") {
+                          handleMarkComplete(pointer);
+                        }
+                      }}
+                      disabled={pointer.status === "completed"}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium max-w-xs">
+                    <div className="truncate" title={pointer.title}>
+                      {pointer.title}
+                    </div>
+                    {pointer.feedback_summary && (
+                      <div className="text-sm text-muted-foreground truncate mt-1">{pointer.feedback_summary}</div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getTopicColor(pointer.topic)}>{pointer.topic}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getStatusColor(pointer.status)}>
+                      {pointer.status.replace("_", " ").toUpperCase()}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      {pointer.weightage}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      {format(new Date(pointer.created_at), "MMM dd")}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {pointer.completed_at ? (
+                      <div className="flex items-center gap-1 text-sm text-green-600">
+                        <Calendar className="h-4 w-4" />
+                        {format(new Date(pointer.completed_at), "MMM dd")}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedPointer(pointer)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleEditPointer(pointer)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Pointer</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{pointer.title}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeletePointer(pointer)}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {filteredPointers.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              No pointers found. Submit feedback to get started!
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <EditPointerDialog
+        pointer={editingPointer}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onPointerUpdated={handlePointerUpdated}
+      />
+    </>
   );
 }

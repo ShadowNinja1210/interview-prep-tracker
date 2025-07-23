@@ -41,14 +41,6 @@ export async function POST(request: NextRequest) {
 
     const user = newUser[0];
 
-    // Create sample data for the new user
-    try {
-      await Database.createSampleDataForUser(user.id);
-    } catch (error) {
-      console.error("Failed to create sample data:", error);
-      // Don't fail the signup if sample data creation fails
-    }
-
     return NextResponse.json({
       success: true,
       message: "User created successfully",
